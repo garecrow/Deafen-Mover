@@ -1,5 +1,6 @@
 import os
 import discord
+from discord import ActivityType
 
 # ========= CONFIG VIA ENVIRONMENT VARIABLES =========
 BOT_TOKEN = os.getenv("DISCORD_TOKEN")
@@ -31,6 +32,26 @@ client = discord.Client(intents=intents)
 previous_channels: dict[int, int] = {}
 
 
+def is_streaming(member: discord.Member, before: discord.VoiceState, after: discord.VoiceState) -> bool:
+    """
+    Returns True if the user is streaming in any way we care about:
+    - Go Live in a voice channel (self_stream)
+    - Discord "Streaming" activity (e.g., Twitch)
+    """
+    # Go Live in the current voice channel
+    if getattr(after, "self_stream", False):
+        return True
+
+    # Any streaming activity on the member
+    for activity in member.activities or []:
+        if isinstance(activity, discord.Streaming):
+            return True
+        if getattr(activity, "type", None) == ActivityType.streaming:
+            return True
+
+    return False
+
+
 @client.event
 async def on_ready():
     print(f"Logged in as {client.user} (ID: {client.user.id})")
@@ -49,13 +70,17 @@ async def on_voice_state_update(member, before, after):
         f"[VS] member={member} guild={member.guild.id} | "
         f"self_deaf {before.self_deaf}->{after.self_deaf} | "
         f"deaf {before.deaf}->{after.deaf} | "
+        f"self_stream {getattr(before, 'self_stream', None)}->{getattr(after, 'self_stream', None)} | "
         f"chan {getattr(before.channel, 'id', None)}->{getattr(after.channel, 'id', None)}"
     )
 
     # Only act on the one server we care about
     if GUILD_ID and member.guild.id != GUILD_ID:
-        # Uncomment if you want to see ignored guilds:
-        # print(f"[VS] Ignoring event in guild {member.guild.id}, expected {GUILD_ID}")
+        return
+
+    # If user is streaming, never move them
+    if is_streaming(member, before, after):
+        print(f"[VS] {member} is streaming, not moving them.")
         return
 
     # Trigger on either self-deafen OR server-deafen
