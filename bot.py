@@ -4,22 +4,6 @@ from discord import ActivityType
 
 # ========= CONFIG VIA ENVIRONMENT VARIABLES =========
 BOT_TOKEN = os.getenv("DISCORD_TOKEN")
-
-def get_int_env(name: str) -> int:
-    value = os.getenv(name)
-    if not value:
-        print(f"[CONFIG] Env var {name} is not set")
-        return 0
-    try:
-        ivalue = int(value)
-        print(f"[CONFIG] {name}={ivalue}")
-        return ivalue
-    except ValueError:
-        print(f"[CONFIG] Env var {name} has non-int value: {value!r}")
-        return 0
-
-GUILD_ID = get_int_env("GUILD_ID")
-DEAFENED_CHANNEL_ID = get_int_env("DEAFENED_CHANNEL_ID")
 # ====================================================
 
 intents = discord.Intents.default()
@@ -55,8 +39,24 @@ def is_streaming(member: discord.Member, before: discord.VoiceState, after: disc
 @client.event
 async def on_ready():
     print(f"Logged in as {client.user} (ID: {client.user.id})")
-    print(f"Watching guild ID {GUILD_ID}, deafened channel ID {DEAFENED_CHANNEL_ID}")
+    print("Watching all guilds the bot is a member of.")
+    for guild in client.guilds:
+        target = get_deafened_channel(guild)
+        target_desc = target.name if target else "<no AFK channel found>"
+        print(f" - {guild.name} (ID: {guild.id}) -> AFK channel: {target_desc}")
     print("Deafen mover bot is running.")
+
+
+def get_deafened_channel(guild: discord.Guild) -> discord.VoiceChannel | None:
+    """Return the AFK voice channel for this guild, if any."""
+    if guild.afk_channel:
+        return guild.afk_channel
+
+    for channel in guild.voice_channels:
+        if channel.name.lower() == "afk":
+            return channel
+
+    return None
 
 
 @client.event
@@ -73,10 +73,6 @@ async def on_voice_state_update(member, before, after):
         f"self_stream {getattr(before, 'self_stream', None)}->{getattr(after, 'self_stream', None)} | "
         f"chan {getattr(before.channel, 'id', None)}->{getattr(after.channel, 'id', None)}"
     )
-
-    # Only act on the one server we care about
-    if GUILD_ID and member.guild.id != GUILD_ID:
-        return
 
     # If user is streaming, never move them
     if is_streaming(member, before, after):
@@ -105,14 +101,14 @@ async def on_voice_state_update(member, before, after):
         # Remember where they were
         previous_channels[member.id] = after.channel.id
 
-        # Get the special "deafened" channel
-        target = member.guild.get_channel(DEAFENED_CHANNEL_ID)
+        # Get the special "deafened" channel (server AFK channel)
+        target = get_deafened_channel(member.guild)
         if not isinstance(target, discord.VoiceChannel):
-            print("[VS] ERROR: DEAFENED_CHANNEL_ID is not a valid voice channel.")
+            print("[VS] ERROR: No AFK voice channel found for this server.")
             return
 
         # If they're already in that channel, don't move
-        if after.channel.id == DEAFENED_CHANNEL_ID:
+        if after.channel.id == target.id:
             print("[VS] User already in deafened channel, not moving")
             return
 
@@ -134,7 +130,8 @@ async def on_voice_state_update(member, before, after):
             return
 
         # They must be currently in the deafened channel for us to move them back
-        if after.channel is None or after.channel.id != DEAFENED_CHANNEL_ID:
+        target = get_deafened_channel(member.guild)
+        if after.channel is None or not target or after.channel.id != target.id:
             print("[VS] User is not in deafened channel anymore, not moving back")
             return
 
@@ -162,10 +159,6 @@ if __name__ == "__main__":
     missing = []
     if not BOT_TOKEN:
         missing.append("DISCORD_TOKEN")
-    if not GUILD_ID:
-        missing.append("GUILD_ID")
-    if not DEAFENED_CHANNEL_ID:
-        missing.append("DEAFENED_CHANNEL_ID")
 
     if missing:
         raise RuntimeError("You must set env vars: " + ", ".join(missing))
