@@ -89,6 +89,39 @@ async def on_voice_state_update(member, before, after):
         or (before.deaf and not after.deaf)
     )
 
+    # NEW: user joined a voice channel while already deafened
+    joined_while_deafened = (
+        (before.channel is None and after.channel is not None)
+        and (after.self_deaf or after.deaf)
+    )
+
+    # CASE 0: user joined while already deafened
+    if joined_while_deafened:
+        print(f"[VS] {member} joined while already deafened")
+
+        # Get the special "deafened" channel (server AFK channel)
+        target = get_deafened_channel(member.guild)
+        if not isinstance(target, discord.VoiceChannel):
+            print("[VS] ERROR: No AFK voice channel found for this server.")
+            return
+
+        # If they're already in that channel, don't move
+        if after.channel.id == target.id:
+            print("[VS] User joined directly into deafened channel, not moving")
+            return
+
+        # Remember where they joined from so we can move them back later
+        previous_channels[member.id] = after.channel.id
+
+        try:
+            await member.move_to(target)
+            print(f"[VS] Moved {member.display_name} (joined deafened) to deafened channel.")
+        except discord.Forbidden:
+            print("[VS] Missing permission to move members.")
+        except discord.HTTPException as e:
+            print(f"[VS] Failed to move member: {e}")
+        return  # done for this event
+
     # CASE 1: user just deafened
     if just_deafened:
         print(f"[VS] {member} just deafened")
@@ -164,4 +197,3 @@ if __name__ == "__main__":
         raise RuntimeError("You must set env vars: " + ", ".join(missing))
 
     client.run(BOT_TOKEN)
-
