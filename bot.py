@@ -1,6 +1,3 @@
-# Updated bot code with DM on join-while-deafened
-# (This restores the original comment style you had before — short, practical, and not overly verbose)
-
 import os
 import discord
 from discord import ActivityType
@@ -22,6 +19,7 @@ previous_channels: dict[int, int] = {}
 
 def is_streaming(member: discord.Member) -> bool:
     """Return True if the member is streaming (Go Live or external stream)."""
+    # member.voice may be None if they're not in voice; getattr covers that
     if getattr(member.voice, "self_stream", False):
         return True
     for activity in member.activities or []:
@@ -51,7 +49,7 @@ async def on_ready():
 
 
 @client.event
-async def on_voice_state_update(member, before, after):
+async def on_voice_state_update(member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
     # Ignore bots entirely
     if member.bot:
         return
@@ -80,8 +78,35 @@ async def on_voice_state_update(member, before, after):
         print("No AFK channel found.")
         return
 
+    # ===== moved out of AFK while still deafened =====
+    moved_out_while_deafened = (
+        before.channel is not None
+        and after.channel is not None
+        and before.channel.id == target.id
+        and after.channel.id != target.id
+        and (after.self_deaf or after.deaf)
+    )
+
+    if moved_out_while_deafened:
+        # Save the channel they were moved to so we can move them back there after undeafen
+        previous_channels[member.id] = after.channel.id
+        try:
+            await member.move_to(target)
+            try:
+                await member.send(
+                    "You are still deafened, so you cannot be outside AFK. "
+                    "You were moved back to AFK — please undeafen to join voice channels."
+                )
+            except discord.Forbidden:
+                # can't DM them, ignore
+                pass
+        except Exception as e:
+            print(f"Move failed (moved-out-while-deafened): {e}")
+        return
+
     # ===== Joined while deafened =====
     if joined_while_deafened:
+        # record the channel they attempted to join so we can send them there after undeafen
         previous_channels[member.id] = after.channel.id
         if after.channel.id != target.id:
             try:
@@ -100,6 +125,7 @@ async def on_voice_state_update(member, before, after):
     if just_deafened:
         if after.channel is None:
             return
+        # save the channel they were in so they can be returned there after undeafen
         previous_channels[member.id] = after.channel.id
         if after.channel.id != target.id:
             try:
@@ -113,6 +139,7 @@ async def on_voice_state_update(member, before, after):
         original_id = previous_channels.pop(member.id, None)
         if original_id is None:
             return
+        # only move back if they're currently in AFK (we moved them there earlier)
         if after.channel is None or after.channel.id != target.id:
             return
         original = member.guild.get_channel(original_id)
