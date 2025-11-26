@@ -88,7 +88,7 @@ async def on_voice_state_update(member, before, after):
                 await member.move_to(target)
                 try:
                     await member.send(
-                        "You have been automatically moved to AFK. Please undeafen before joining a voice room. Doing so now will bring you to the voice room you tried to enter automatically."
+                        "You have been automatically moved to AFK. Please undeafen before joining a voice room. Doing so now will automatically bring you to the voice room you tried to enter."
                     )
                 except discord.Forbidden:
                     pass
