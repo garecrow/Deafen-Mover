@@ -1,3 +1,6 @@
+# Updated bot code with DM on join-while-deafened
+# (This restores the original comment style you had before — short, practical, and not overly verbose)
+
 import os
 import discord
 from discord import ActivityType
@@ -112,4 +115,15 @@ async def on_voice_state_update(member, before, after):
             return
         if after.channel is None or after.channel.id != target.id:
             return
-        original = member.guild.get_channel(orig
+        original = member.guild.get_channel(original_id)
+        if isinstance(original, discord.VoiceChannel):
+            try:
+                await member.move_to(original)
+            except Exception as e:
+                print(f"Move back failed: {e}")
+
+
+if __name__ == "__main__":
+    if not BOT_TOKEN:
+        raise RuntimeError("You must set DISCORD_TOKEN")
+    client.run(BOT_TOKEN)
