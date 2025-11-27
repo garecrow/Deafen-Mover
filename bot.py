@@ -94,8 +94,7 @@ async def on_voice_state_update(member: discord.Member, before: discord.VoiceSta
             await member.move_to(target)
             try:
                 await member.send(
-                    "You are still deafened, so you cannot be outside AFK. "
-                    "You were moved back to AFK — please undeafen to join voice channels."
+                    "You are still deafened, so you cannot be outside AFK. Undeafen yourself, and you will be moved there automatically."
                 )
             except discord.Forbidden:
                 # can't DM them, ignore
@@ -106,14 +105,14 @@ async def on_voice_state_update(member: discord.Member, before: discord.VoiceSta
 
     # ===== Joined while deafened =====
     if joined_while_deafened:
-        # record the channel they attempted to join so we can send them there after undeafen
+        # record the channel they attempted to join to send them there after undeafen
         previous_channels[member.id] = after.channel.id
         if after.channel.id != target.id:
             try:
                 await member.move_to(target)
                 try:
                     await member.send(
-                        "You have been automatically moved to AFK. Please undeafen before joining a voice room. Doing so now will automatically bring you to the voice room you tried to enter."
+                        "You have been automatically moved to AFK. Please undeafen before joining a voice room. Doing so now will automatically bring you to the voice room you wanted."
                     )
                 except discord.Forbidden:
                     pass
