@@ -45,7 +45,10 @@ def get_deafened_channel(guild: discord.Guild) -> discord.VoiceChannel | None:
 async def move_if_still_deafened(member: discord.Member, target: discord.VoiceChannel, delay: int = 10):
     """Wait for delay, then move the member to AFK if still deafened."""
     await asyncio.sleep(delay)
-    if member.voice and (member.voice.self_deaf or member.voice.deaf) and member.voice.channel.id != target.id:
+    # Check if still deafened AND not streaming before moving
+    if (member.voice and (member.voice.self_deaf or member.voice.deaf) 
+            and member.voice.channel.id != target.id
+            and not is_streaming(member, member.voice)):
         try:
             await member.move_to(target)
         except Exception as e:
@@ -83,7 +86,8 @@ async def on_voice_state_update(member: discord.Member, before: discord.VoiceSta
 
     # ===== Joined while deafened =====
     joined_while_deafened = before.channel is None and after.channel and (after.self_deaf or after.deaf)
-    if joined_while_deafened:
+    # Check if streaming when joining (should not move if streaming)
+    if joined_while_deafened and not is_currently_streaming:
         previous_channels[member.id] = after.channel.id
         if after.channel.id != target.id:
             try:
@@ -100,7 +104,8 @@ async def on_voice_state_update(member: discord.Member, before: discord.VoiceSta
 
     # ===== Just deafened =====
     just_deafened = (not before.self_deaf and after.self_deaf) or (not before.deaf and after.deaf)
-    if just_deafened and after.channel:
+    # Don't move if currently streaming
+    if just_deafened and after.channel and not is_currently_streaming:
         previous_channels[member.id] = after.channel.id
         if after.channel.id != target.id:
             try:
@@ -128,7 +133,8 @@ async def on_voice_state_update(member: discord.Member, before: discord.VoiceSta
         and after.channel.id != target.id
         and (after.self_deaf or after.deaf)
     )
-    if moved_out_while_deafened:
+    # Don't move back if currently streaming
+    if moved_out_while_deafened and not is_currently_streaming:
         previous_channels[member.id] = after.channel.id
         try:
             await member.move_to(target)
